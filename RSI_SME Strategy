@@ -1,0 +1,260 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec 31 16:00:49 2020
+
+@author: vesuviuz
+"""
+
+import numpy as np
+import talib
+import krakenex
+from pykrakenapi import KrakenAPI
+import pandas as pd
+import sys
+import warnings
+import alerts as alert
+import time
+
+  
+global coinz
+global defined
+
+#turn off warnings
+if not sys.warnoptions:
+    warnings.simplefilter("ignore")
+
+#api globals
+global api, k
+ 
+#optimization globals
+global tp, op, minv, maxv
+    
+
+
+#Kraken API setup
+api = krakenex.API()
+k = KrakenAPI(api)
+
+
+#values to set for optimization
+tp = 14 #RSI time period play =)
+
+#define coin pair
+coin_pair = "XXRPZEUR"
+coin_period = 15 #ohlc periods: 1 (default), 5, 15, 30, 60, 240, 1440, 10080, 21600
+#"XXBTZEUR"
+
+
+#file
+file1 = open("rsi_output.txt","a")
+#file2 = open(r"rsi_output.txt","w+") 
+
+#get RSI
+def RSI_return(defined):
+    #coin = getData(defined)
+    coin = defined
+    
+ 
+    #close_data = coin.iloc[:,4].values
+    #close_data_rev = np.flip(coin.iloc[:,4], 0)
+    #close_data_rev = close_data_rev [::-1]
+    coin['RSI'] = talib.RSI(coin.iloc[:,4].values, timeperiod = tp) #play with time period
+    #f=coin['close']
+    #print("Current Price ", defined, ": ", f.iloc [-1]) #("Current Price: ", f.iloc [-1])
+    #coin['RSI'] = talib.RSI(close_data_rev, timeperiod = tp)
+    RSI_coin_return = coin['RSI']
+    #print(coin)
+    return RSI_coin_return
+    
+def moving_average(defined):
+    coin = getData(defined)
+    
+def sma_calc(coin):
+    real = talib.SMA(coin.iloc[:,4].values, timeperiod=100)
+    return real  
+ 
+def tema_calc(coin):   
+    real = talib.TEMA(coin.iloc[:,4].values, timeperiod=100)
+    return real
+
+def atr_calc(coin):
+    real = talib.ATR(coin.iloc[:,2], coin.iloc[:,3], coin.iloc[:,4], timeperiod=14)
+    return real
+
+    
+def getData(pair):
+   
+   # api = krakenex.API() # depricated to global
+   # k = KrakenAPI(api) # depricated to global
+    op = coin_period  #ohlc periods: 1 (default), 5, 15, 30, 60, 240, 1440, 10080, 21600
+    ohlc = k.get_ohlc_data(pair, op, ascending=True) 
+         #ascending : bool, optional (default=False)
+         #If set to True, the data frame will be sorted with the most recent
+         # date in the last position. When set to False, the most recent date
+         #is in the first position.
+         
+    n_ohlc=np.asarray(ohlc)
+    #change tuple to usable format
+    f_ohlc=n_ohlc[0]
+
+    return(f_ohlc)
+
+pd.set_option('display.max_rows', None)
+
+def RSI_Printer():
+    print(RSI_return(coin_pair))
+
+def print_to_file():
+    L=RSI_return(coin_pair)
+    L=str(L)
+    #RSI_Printer()
+        
+    file1.write("Output: \n")
+    file1.writelines(L)
+    file1.close()
+
+##try RSI 50 / 20 SMA strategy
+#     Price has to be above the 20-SMA — indicating an uptrend.
+#    Wait for the price to pull back down to touch the 20 SMA line.
+#    Once the 20-SMA line is touched, look down to see if the 5-day 
+#       RSI has bottomed below 50 RSI level and has started to turn up-confirming a weakening downward momentum.
+
+#    Price has to be below the 20-SMA indicating a preceding downtrend.
+#    Wait for the price to rally back up to touch the 20-SMA line.
+#    Once the 20-SMA line is touched, look down to see if the 5-day RSI has peaked 
+#       above the 50 level and has started to turn down-confirming a weakening upward momentum.
+def calc_stop_loss(current_price, current_atr):
+    atr_percent = current_atr * .50
+    print("Current ATR: ", current_atr)
+    print("ATR Percent: ", atr_percent)
+    stop_loss_perc = current_price - atr_percent
+    print("Stop Loss: ", stop_loss_perc)
+    return stop_loss_perc
+    
+
+def rsi_alert(defined):
+    try:
+        coin = getData(defined)
+    except:
+        time.sleep(15)
+        coin = getData(defined)
+    f=coin['close']
+    current_price = f.iloc [-1]
+    last_price = f.iloc [-2]
+    print(defined, "\n", "Current Price",  ": ", current_price, "\n", "Last Price: ", last_price)
+    ind = RSI_return(coin)
+    indi = ind[-1]
+    indi2 = ind[-2]
+    sma_real = sma_calc(coin)
+    tema_real = tema_calc(coin)
+    tema_current = tema_real[-1]
+    print("Current TEMA: ", tema_current)
+    #print("TEMA: ", tema_current)
+    sma_current = sma_real[-1]
+    sma_last = sma_real[-2]
+    sma_tail = sma_real[-700:-1]
+    #ATR trial for stop loss
+    atr_current = atr_calc(coin)
+    #trendy = np.average(sma_tail)
+    #print("Average: ", trendy)
+    print("SMA:", sma_current, "\n", "Previous SMA: ", sma_last) 
+    indo = float(indi)
+    indo2 = float(indi2)
+    print("RSI Current: ", indo)
+    print("RSI Last: ", indo2)
+    #print("The stop loss in calculated at: ", calc_stop_loss(current_price, atr_current[-1]))
+    #decision engine
+    '''
+    decision = "buy"
+    stop_loss = 1
+    trend = "bear"
+    text2 = "test"
+    alert.alert(text2, defined, current_price, indo, sma_current, decision, trend, stop_loss)
+    '''
+    if last_price > sma_last and current_price <= sma_current:
+    #test alert ###############
+
+        text = "SMA Crossover: Bullish"
+        print(text)
+
+        if indo >= 33.33 and indo <= 66.66 and indo2 <= indo:
+            stop_loss = current_price - (atr_current[-1] * 2)
+            stop_loss = round(stop_loss, 2)
+            current_price = round(current_price, 2)
+            print("Stop Loss: ", stop_loss)
+            decision = "Buy"
+            trend = "Bull"
+            text1="Bullish Divergence Detected."
+            print(text1)
+            print("--- Sending Alerts ---")
+            alert.alert(text1, defined, current_price, indo, sma_current, decision, trend, stop_loss)
+            #text = "RSI SMA Bullish Signal, testing for trend..."
+            #print(text)
+            '''
+            if current_price > tema_current:
+
+                stop_loss = current_price - (atr_current[-1] * 2)
+                stop_loss = round(stop_loss, 2)
+                current_price = round(current_price, 2)
+                print("Stop Loss: ", stop_loss)
+                decision = "Buy"
+                trend = "Bull"
+                text1="Bullish Divergence Detected."
+                print(text1)
+                print("--- Sending Alerts ---")
+                alert.alert(text1, defined, current_price, indo, sma_current, decision, trend, stop_loss)
+                 
+            else:
+                print("SMI RSI Bullish - but trend is bearish - NO SIGNAL")
+                pass
+            '''
+        else:
+            print("Crossover - but RSI is out of range.")
+            pass
+    elif last_price < sma_last and current_price >= sma_current:
+        text = "SMA Crossover: Bearish"
+        print(text)
+
+        if indo <= 66.66 and indo >= 33.33 and indo2 >= indo:  
+            #text = "RSI SMA Bearish Signal, testing for trend..."
+            #print(text)
+                        #test alert ###############
+            #print(text)
+            stop_loss = current_price + (atr_current[-1] * 2)
+            stop_loss = round(stop_loss, 2)
+            print("Stop Loss: ", stop_loss)
+            decision = "Sell"
+            trend = "Bear"                
+            text2="Bearish Divergence Detected."
+            print(text2)
+            print("--- Sending Alerts ---")
+            alert.alert(text2, defined, current_price, indo, sma_current, decision, trend, stop_loss)
+
+            '''           
+            if current_price <= tema_current:
+                stop_loss = current_price + (atr_current[-1] * 2)
+                stop_loss = round(stop_loss, 2)
+                print("Stop Loss: ", stop_loss)
+                decision = "Sell"
+                trend = "Bear"                
+                text2="Bearish Divergence Detected."
+                print(text2)
+                print("--- Sending Alerts ---")
+                alert.alert(text2, defined, current_price, indo, sma_current, decision, trend, stop_loss)
+            else:
+                print("SMI RSI Bearish - but trend is bullish - NO SIGNAL")
+                pass
+            '''
+        else:
+            print("Crossover - but RSI is out of range.")
+            pass
+    else:
+        print("------> No signals for %s." % defined)
+
+
+
+
+#debugg
+#rsi_alert(coin_pair)
+#print_to_file()
+#graph_RSI(coin_pair)    
